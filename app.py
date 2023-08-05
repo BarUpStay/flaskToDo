@@ -1,12 +1,21 @@
 import socket
-import sqlite3
 import secrets
-import dbChecker
+import psycopg2
+
 from datetime import datetime
 from flask import Flask, render_template, redirect
 
 app = Flask(__name__)
 app.secret_key = secrets.token_urlsafe(32)
+
+connection = psycopg2.connect(
+    database="postgres",
+    user="postgres",
+    password="0Password",
+    host="database-1.c8gurtjlyvsf.eu-north-1.rds.amazonaws.com",
+    port="5432",
+)
+cursor = connection.cursor()
 
 
 def currentDate():
@@ -19,8 +28,6 @@ def currentTime():
 
 @app.route("/")
 def index():
-    connection = sqlite3.connect("todos.db")
-    cursor = connection.cursor()
     cursor.execute("select * from todos")
     todos = cursor.fetchall()
     return render_template("/index.html", todos=todos)
@@ -28,50 +35,38 @@ def index():
 
 @app.route("/add/<todo>")
 def add(todo):
-    connection = sqlite3.connect("todos.db")
-    cursor = connection.cursor()
-    cursor.execute(
-        f'insert into todos(todo,date,time) values("{todo}","{currentDate()}","{currentTime()}")'
-    )
+    cursor.execute(f"insert into todos(todo,date,time) values('{todo}','{currentDate()}','{currentTime()}')")
     connection.commit()
     return redirect("/")
 
 
 @app.route("/check/<int:id>")
 def check(id):
-    connection = sqlite3.connect("todos.db")
-    cursor = connection.cursor()
-    cursor.execute(f'update todos set status = "True" where id = {id}')
-    cursor.execute(f'update todos set editDate = "{currentDate()}" where id = {id}')
-    cursor.execute(f'update todos set editTime = "{currentTime()}" where id = {id}')
+    cursor.execute(f"update todos set status = 'True' where id = {id}")
+    cursor.execute('update todos set "editDate" = %s where id = %s', (currentDate(), id))
+    cursor.execute('update todos set "editTime" = %s where id = %s', (currentTime(), id))
     connection.commit()
     return redirect("/")
 
 
 @app.route("/uncheck/<int:id>")
 def uncheck(id):
-    connection = sqlite3.connect("todos.db")
-    cursor = connection.cursor()
-    cursor.execute(f'update todos set status = "False" where id = {id}')
+    cursor.execute(f"update todos set status = 'False' where id = {id}")
     connection.commit()
     return redirect("/")
 
 
 @app.route("/edit/<int:id>/<todo>")
 def edit(id, todo):
-    connection = sqlite3.connect("todos.db")
-    cursor = connection.cursor()
-    cursor.execute(f'update todos set todo = "{todo}" where id = {id}')
+    cursor.execute(f"update todos set todo = '{todo}' where id = {id}")
     connection.commit()
     return redirect("/")
 
 
 @app.route("/delete/<int:id>")
 def delete(id):
-    connection = sqlite3.connect("todos.db")
-    cursor = connection.cursor()
     cursor.execute(f"delete from todos where id = {id}")
-    cursor.execute(f"update sqlite_sequence set seq = seq-1")
+    cursor.execute(f"select setval('todos_id_seq',(select max(id) - 1 from todos))")
     connection.commit()
     return redirect("/")
 
@@ -84,5 +79,6 @@ def page_not_found(e):
 if __name__ == "__main__":
     app.run(
         debug=True,
+        port=8000,
         host=socket.gethostbyname(socket.gethostname()),
     )
